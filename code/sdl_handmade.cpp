@@ -1,6 +1,12 @@
-#include "SDL.h"
+#include <SDL.h>
+#include <SDL_pixels.h>
+#include <stdlib.h>
 
 bool HandleEvent(SDL_Event *Event);
+static void SDLUpdateWindow(SDL_Window *Window);
+
+int BitmapWidth;
+int BytesPerPixel = 4;
 
 int main(int argc, char *argv[]) {
   if (SDL_Init(SDL_INIT_VIDEO)) {
@@ -42,26 +48,52 @@ bool HandleEvent(SDL_Event *Event) {
   } break;
   case SDL_WINDOWEVENT: {
     switch (Event->window.event) {
-    case SDL_WINDOWEVENT_RESIZED: {
+    case SDL_WINDOWEVENT_SIZE_CHANGED: {
       printf("SDL_WINDOWEVENT_RESIZED (%d x %d)\n", Event->window.data1,
              Event->window.data2);
+
     } break;
     case SDL_WINDOWEVENT_EXPOSED: {
       SDL_Window *Window = SDL_GetWindowFromID(Event->window.windowID);
-      SDL_Renderer *Renderer = SDL_GetRenderer(Window);
-      static bool IsWhite = true;
-      if (IsWhite) {
-        SDL_SetRenderDrawColor(Renderer, 255, 255, 255, 255);
-        IsWhite = false;
-      } else {
-        SDL_SetRenderDrawColor(Renderer, 0, 0, 0, 255);
-        IsWhite = true;
-      }
-      SDL_RenderClear(Renderer);
-      SDL_RenderPresent(Renderer);
+      SDLUpdateWindow(Window);
     } break;
     }
   }
   }
-  return (ShouldQuit);
+  return ShouldQuit;
+}
+
+static void SDLUpdateWindow(SDL_Window *Window) {
+  SDL_Renderer *Renderer = SDL_GetRenderer(Window);
+
+  int Width, Height;
+  SDL_GetWindowSize(Window, &Width, &Height);
+  BitmapWidth = Width;
+
+  SDL_Texture *Texture =
+      SDL_CreateTexture(Renderer, SDL_PIXELFORMAT_ARGB8888,
+                        SDL_TEXTUREACCESS_STREAMING, Width, Height);
+
+  void *BitmapMemory = malloc(Width * Height * BytesPerPixel);
+
+  // Make it white
+  int *p = (int *)BitmapMemory;
+  for (int i = 0; i < Width * Height; i++) {
+    *p++ = 0xffffffff;
+  }
+
+  int pitch = BitmapWidth * BytesPerPixel;
+  if (SDL_UpdateTexture(Texture, 0, BitmapMemory, pitch)) {
+    // TODO: Handle error here
+  }
+  SDL_RenderCopy(Renderer, Texture, 0, 0);
+  SDL_RenderPresent(Renderer);
+
+  if (Texture) {
+    SDL_DestroyTexture(Texture);
+  }
+
+  if (BitmapMemory) {
+    free(BitmapMemory);
+  }
 }
