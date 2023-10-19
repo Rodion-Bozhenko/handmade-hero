@@ -1,99 +1,137 @@
 #include <SDL.h>
-#include <SDL_pixels.h>
+#include <stdint.h>
 #include <stdlib.h>
 
-bool HandleEvent(SDL_Event *Event);
-static void SDLUpdateWindow(SDL_Window *Window);
+struct BackBuffer {
+  SDL_Texture *texture;
+  void *memory;
+  int width;
+  int height;
+  int pitch;
+};
 
-int BitmapWidth;
-int BytesPerPixel = 4;
+static BackBuffer globalBackBuffer;
+
+const int bytesPerPixel = 4;
+
+bool handleEvent(SDL_Event *event);
+static void updateWindow(SDL_Window *window, SDL_Renderer *renderer,
+                         BackBuffer buffer);
+static void renderWeirdGradient(BackBuffer buffer, int xOffset, int yOffset);
+static void resizeTexture(BackBuffer *buffer, SDL_Renderer *renderer, int width,
+                          int height);
 
 int main(int argc, char *argv[]) {
   if (SDL_Init(SDL_INIT_VIDEO)) {
     // TODO: make something in here
   }
 
-  SDL_Window *Window =
+  SDL_Window *window =
       SDL_CreateWindow("Handmade Hero", SDL_WINDOWPOS_UNDEFINED,
                        SDL_WINDOWPOS_UNDEFINED, 640, 480, SDL_WINDOW_RESIZABLE);
-  if (!Window) {
+  if (!window) {
     return 1;
   }
 
-  SDL_Renderer *Renderer = SDL_CreateRenderer(Window, -1, 0);
+  SDL_Renderer *renderer = SDL_CreateRenderer(window, -1, 0);
 
-  if (!Renderer) {
+  if (!renderer) {
     return 1;
   }
 
-  for (;;) {
-    SDL_Event Event;
-    SDL_WaitEvent(&Event);
-    if (HandleEvent(&Event)) {
-      break;
+  int width, height;
+  SDL_GetWindowSize(window, &width, &height);
+  resizeTexture(&globalBackBuffer, renderer, width, height);
+
+  int xOffset = 128;
+  int yOffset = 0;
+
+  bool running = true;
+  while (running) {
+    SDL_Event event;
+    while (SDL_PollEvent(&event)) {
+      if (handleEvent(&event)) {
+        running = false;
+      }
     }
+    renderWeirdGradient(globalBackBuffer, xOffset, yOffset);
+    updateWindow(window, renderer, globalBackBuffer);
+
+    ++xOffset;
   }
 
   SDL_Quit();
   return 0;
 }
 
-bool HandleEvent(SDL_Event *Event) {
-  bool ShouldQuit = false;
+bool handleEvent(SDL_Event *event) {
+  bool shouldQuit = false;
 
-  switch (Event->type) {
+  switch (event->type) {
   case SDL_QUIT: {
     printf("SDL_QUIT\n");
-    ShouldQuit = true;
+    shouldQuit = true;
   } break;
   case SDL_WINDOWEVENT: {
-    switch (Event->window.event) {
+    switch (event->window.event) {
     case SDL_WINDOWEVENT_SIZE_CHANGED: {
-      printf("SDL_WINDOWEVENT_RESIZED (%d x %d)\n", Event->window.data1,
-             Event->window.data2);
+      printf("SDL_WINDOWEVENT_RESIZED (%d x %d)\n", event->window.data1,
+             event->window.data2);
 
     } break;
     case SDL_WINDOWEVENT_EXPOSED: {
-      SDL_Window *Window = SDL_GetWindowFromID(Event->window.windowID);
-      SDLUpdateWindow(Window);
+      SDL_Window *window = SDL_GetWindowFromID(event->window.windowID);
+      SDL_Renderer *renderer = SDL_GetRenderer(window);
+      updateWindow(window, renderer, globalBackBuffer);
+      printf("Exposing\n");
     } break;
     }
   }
   }
-  return ShouldQuit;
+  return shouldQuit;
 }
 
-static void SDLUpdateWindow(SDL_Window *Window) {
-  SDL_Renderer *Renderer = SDL_GetRenderer(Window);
-
-  int Width, Height;
-  SDL_GetWindowSize(Window, &Width, &Height);
-  BitmapWidth = Width;
-
-  SDL_Texture *Texture =
-      SDL_CreateTexture(Renderer, SDL_PIXELFORMAT_ARGB8888,
-                        SDL_TEXTUREACCESS_STREAMING, Width, Height);
-
-  void *BitmapMemory = malloc(Width * Height * BytesPerPixel);
-
-  // Make it white
-  int *p = (int *)BitmapMemory;
-  for (int i = 0; i < Width * Height; i++) {
-    *p++ = 0xffffffff;
+static void resizeTexture(BackBuffer *buffer, SDL_Renderer *renderer, int width,
+                          int height) {
+  if (buffer->memory) {
+    free(buffer->memory);
   }
 
-  int pitch = BitmapWidth * BytesPerPixel;
-  if (SDL_UpdateTexture(Texture, 0, BitmapMemory, pitch)) {
+  if (buffer->texture) {
+    SDL_DestroyTexture(buffer->texture);
+  }
+
+  buffer->texture =
+      SDL_CreateTexture(renderer, SDL_PIXELFORMAT_ARGB8888,
+                        SDL_TEXTUREACCESS_STREAMING, width, height);
+  buffer->width = width;
+  buffer->height = height;
+  buffer->pitch = width * bytesPerPixel;
+  buffer->memory = malloc(buffer->width * buffer->height * bytesPerPixel);
+}
+
+static void updateWindow(SDL_Window *window, SDL_Renderer *renderer,
+                         BackBuffer buffer) {
+  if (SDL_UpdateTexture(buffer.texture, 0, buffer.memory, buffer.pitch)) {
     // TODO: Handle error here
   }
-  SDL_RenderCopy(Renderer, Texture, 0, 0);
-  SDL_RenderPresent(Renderer);
 
-  if (Texture) {
-    SDL_DestroyTexture(Texture);
-  }
+  SDL_RenderCopy(renderer, buffer.texture, 0, 0);
+  SDL_RenderPresent(renderer);
+}
 
-  if (BitmapMemory) {
-    free(BitmapMemory);
+static void renderWeirdGradient(BackBuffer buffer, int xOffset, int yOffset) {
+  // Pitch - number of bytes that represent on row of pixels in bitmap or
+  // texture
+  uint8_t *row = (uint8_t *)buffer.memory;
+
+  for (int y = 0; y < buffer.height; y++) {
+    uint32_t *pixel = (uint32_t *)row;
+    for (int x = 0; x < buffer.width; x++) {
+      uint8_t blue = x + xOffset;
+      uint8_t green = y + yOffset;
+      *pixel++ = (green << 8 | blue);
+    }
+    row += buffer.pitch;
   }
 }
