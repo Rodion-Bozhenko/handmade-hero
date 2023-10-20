@@ -13,6 +13,8 @@ struct BackBuffer {
 static BackBuffer globalBackBuffer;
 
 const int bytesPerPixel = 4;
+int xOffset = 128;
+int yOffset = 0;
 
 bool handleEvent(SDL_Event *event);
 static void updateWindow(SDL_Window *window, SDL_Renderer *renderer,
@@ -43,9 +45,6 @@ int main(int argc, char *argv[]) {
   SDL_GetWindowSize(window, &width, &height);
   resizeTexture(&globalBackBuffer, renderer, width, height);
 
-  int xOffset = 128;
-  int yOffset = 0;
-
   bool running = true;
   while (running) {
     SDL_Event event;
@@ -58,6 +57,7 @@ int main(int argc, char *argv[]) {
     updateWindow(window, renderer, globalBackBuffer);
 
     ++xOffset;
+    yOffset += 1;
   }
 
   SDL_Quit();
@@ -77,7 +77,12 @@ bool handleEvent(SDL_Event *event) {
     case SDL_WINDOWEVENT_SIZE_CHANGED: {
       printf("SDL_WINDOWEVENT_RESIZED (%d x %d)\n", event->window.data1,
              event->window.data2);
-
+      SDL_Window *window = SDL_GetWindowFromID(event->window.windowID);
+      SDL_Renderer *renderer = SDL_GetRenderer(window);
+      resizeTexture(&globalBackBuffer, renderer, event->window.data1,
+                    event->window.data2);
+      renderWeirdGradient(globalBackBuffer, xOffset, yOffset);
+      updateWindow(window, renderer, globalBackBuffer);
     } break;
     case SDL_WINDOWEVENT_EXPOSED: {
       SDL_Window *window = SDL_GetWindowFromID(event->window.windowID);
