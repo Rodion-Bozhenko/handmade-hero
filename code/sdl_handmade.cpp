@@ -1,6 +1,7 @@
+#include "SDL_error.h"
 #include <SDL.h>
 #include <stdint.h>
-#include <stdlib.h>
+#include <stdio.h>
 
 #define MAX_CONTROLLERS 4
 SDL_GameController *controllers[MAX_CONTROLLERS];
@@ -30,13 +31,20 @@ static void updateWindow(SDL_Window *window, SDL_Renderer *renderer,
 static void renderWeirdGradient(BackBuffer buffer, int xOffset, int yOffset);
 static void resizeTexture(BackBuffer *buffer, SDL_Renderer *renderer, int width,
                           int height);
+static void openGameControllers();
+static void closeGameControllers();
+static int initAudioDevice(int32_t samplesPerSecond, int32_t bufferSize);
+static void audioCallback(void *userData, Uint8 *audioData, int length);
 
 WindowDimension getWindowDimension(SDL_Window *window);
 
 int main(int argc, char *argv[]) {
-  if (SDL_Init(SDL_INIT_VIDEO | SDL_INIT_GAMECONTROLLER)) {
-    // TODO: make something in here
+  if (SDL_Init(SDL_INIT_VIDEO | SDL_INIT_GAMECONTROLLER | SDL_INIT_AUDIO)) {
+    const char *errorMsg = SDL_GetError();
+    printf("Error initializing SDL: %s\n", errorMsg);
   }
+  openGameControllers();
+  int audioDeviceID = initAudioDevice(48000, 4096);
 
   SDL_Window *window =
       SDL_CreateWindow("Handmade Hero", SDL_WINDOWPOS_UNDEFINED,
@@ -66,17 +74,6 @@ int main(int argc, char *argv[]) {
     updateWindow(window, renderer, globalBackBuffer);
 
     ++xOffset;
-
-    int maxJoysticks = SDL_NumJoysticks();
-    for (int i = 0; i < maxJoysticks; i++) {
-      if (!SDL_IsGameController(i)) {
-        continue;
-      }
-      if (i >= MAX_CONTROLLERS) {
-        break;
-      }
-      controllers[i] = SDL_GameControllerOpen(i);
-    }
 
     for (int i = 0; i < MAX_CONTROLLERS; i++) {
       if (SDL_GameControllerGetAttached(controllers[i])) {
@@ -117,12 +114,10 @@ int main(int argc, char *argv[]) {
     }
   }
 
-  for (int i = 0; i < MAX_CONTROLLERS; i++) {
-    if (controllers[i]) {
-      SDL_GameControllerClose(controllers[i]);
-    }
+  closeGameControllers();
+  if (audioDeviceID) {
+    SDL_CloseAudioDevice(audioDeviceID);
   }
-
   SDL_Quit();
   return 0;
 }
@@ -243,4 +238,59 @@ static void renderWeirdGradient(BackBuffer buffer, int xOffset, int yOffset) {
     }
     row += buffer.pitch;
   }
+}
+
+static void openGameControllers() {
+  int maxJoysticks = SDL_NumJoysticks();
+  for (int i = 0; i < maxJoysticks; i++) {
+    if (!SDL_IsGameController(i)) {
+      continue;
+    }
+    if (i >= MAX_CONTROLLERS) {
+      break;
+    }
+    controllers[i] = SDL_GameControllerOpen(i);
+  }
+}
+
+static void closeGameControllers() {
+  for (int i = 0; i < MAX_CONTROLLERS; i++) {
+    if (controllers[i]) {
+      SDL_GameControllerClose(controllers[i]);
+    }
+  }
+}
+
+static int initAudioDevice(int32_t samplesPerSecond, int32_t bufferSize) {
+  SDL_AudioSpec desiredAudioSettings = {0};
+  desiredAudioSettings.freq = samplesPerSecond;
+  desiredAudioSettings.format = AUDIO_S16LSB;
+  desiredAudioSettings.channels = 2;
+  desiredAudioSettings.samples = bufferSize;
+  desiredAudioSettings.callback = &audioCallback;
+
+  SDL_AudioSpec audioSettings;
+  int deviceID =
+      SDL_OpenAudioDevice(0, 0, &desiredAudioSettings, &audioSettings, 0);
+  if (!deviceID) {
+    const char *errorMsg = SDL_GetError();
+    printf("Error opening audio device: %s\n", errorMsg);
+    return 0;
+  }
+
+  printf("Initializing audio device at freq: %d Hz and channels: %d\n",
+         audioSettings.freq, audioSettings.channels);
+
+  if (audioSettings.format != AUDIO_S16LSB) {
+    printf("Cannot open audio device with AUDIO_S16LSB format. Got: %d\n",
+           audioSettings.format);
+    SDL_CloseAudioDevice(deviceID);
+  }
+
+  SDL_PauseAudioDevice(deviceID, 0);
+
+  return deviceID;
+}
+static void audioCallback(void *userData, Uint8 *audioData, int length) {
+  memset(audioData, 0, length);
 }
