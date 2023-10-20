@@ -2,6 +2,9 @@
 #include <stdint.h>
 #include <stdlib.h>
 
+#define MAX_CONTROLLERS 4
+SDL_GameController *controllers[MAX_CONTROLLERS];
+
 struct BackBuffer {
   SDL_Texture *texture;
   void *memory;
@@ -18,7 +21,7 @@ struct WindowDimension {
 
 static BackBuffer globalBackBuffer;
 
-int xOffset = 128;
+int xOffset = 0;
 int yOffset = 0;
 
 bool handleEvent(SDL_Event *event);
@@ -31,7 +34,7 @@ static void resizeTexture(BackBuffer *buffer, SDL_Renderer *renderer, int width,
 WindowDimension getWindowDimension(SDL_Window *window);
 
 int main(int argc, char *argv[]) {
-  if (SDL_Init(SDL_INIT_VIDEO)) {
+  if (SDL_Init(SDL_INIT_VIDEO | SDL_INIT_GAMECONTROLLER)) {
     // TODO: make something in here
   }
 
@@ -63,7 +66,61 @@ int main(int argc, char *argv[]) {
     updateWindow(window, renderer, globalBackBuffer);
 
     ++xOffset;
-    yOffset += 1;
+
+    int maxJoysticks = SDL_NumJoysticks();
+    for (int i = 0; i < maxJoysticks; i++) {
+      if (!SDL_IsGameController(i)) {
+        continue;
+      }
+      if (i >= MAX_CONTROLLERS) {
+        break;
+      }
+      controllers[i] = SDL_GameControllerOpen(i);
+    }
+
+    for (int i = 0; i < MAX_CONTROLLERS; i++) {
+      if (SDL_GameControllerGetAttached(controllers[i])) {
+        bool up = SDL_GameControllerGetButton(controllers[i],
+                                              SDL_CONTROLLER_BUTTON_DPAD_UP);
+        bool down = SDL_GameControllerGetButton(
+            controllers[i], SDL_CONTROLLER_BUTTON_DPAD_DOWN);
+        bool left = SDL_GameControllerGetButton(
+            controllers[i], SDL_CONTROLLER_BUTTON_DPAD_LEFT);
+        bool right = SDL_GameControllerGetButton(
+            controllers[i], SDL_CONTROLLER_BUTTON_DPAD_RIGHT);
+        bool start = SDL_GameControllerGetButton(controllers[i],
+                                                 SDL_CONTROLLER_BUTTON_START);
+        bool back = SDL_GameControllerGetButton(controllers[i],
+                                                SDL_CONTROLLER_BUTTON_BACK);
+        bool leftShoulder = SDL_GameControllerGetButton(
+            controllers[i], SDL_CONTROLLER_BUTTON_LEFTSHOULDER);
+        bool rightShoulder = SDL_GameControllerGetButton(
+            controllers[i], SDL_CONTROLLER_BUTTON_RIGHTSHOULDER);
+        bool aButton = SDL_GameControllerGetButton(controllers[i],
+                                                   SDL_CONTROLLER_BUTTON_A);
+        bool bButton = SDL_GameControllerGetButton(controllers[i],
+                                                   SDL_CONTROLLER_BUTTON_B);
+        bool xButton = SDL_GameControllerGetButton(controllers[i],
+                                                   SDL_CONTROLLER_BUTTON_X);
+        bool yButton = SDL_GameControllerGetButton(controllers[i],
+                                                   SDL_CONTROLLER_BUTTON_Y);
+
+        int16_t stickX = SDL_GameControllerGetAxis(controllers[i],
+                                                   SDL_CONTROLLER_AXIS_LEFTX);
+        int16_t stickY = SDL_GameControllerGetAxis(controllers[i],
+                                                   SDL_CONTROLLER_AXIS_LEFTY);
+
+        if (aButton) {
+          yOffset += 2;
+        }
+      }
+    }
+  }
+
+  for (int i = 0; i < MAX_CONTROLLERS; i++) {
+    if (controllers[i]) {
+      SDL_GameControllerClose(controllers[i]);
+    }
   }
 
   SDL_Quit();
@@ -106,6 +163,37 @@ bool handleEvent(SDL_Event *event) {
     } break;
     }
   }
+  case SDL_KEYDOWN:
+  case SDL_KEYUP: {
+    SDL_Keycode key = event->key.keysym.sym;
+    bool wasDown = false;
+    if (event->key.state == SDL_RELEASED) {
+      wasDown = true;
+    }
+    if (event->key.repeat != 0) {
+      wasDown = true;
+    }
+    if (!wasDown) {
+      switch (key) {
+      case SDLK_w: {
+        printf("w\n");
+        yOffset += 200;
+      } break;
+      case SDLK_s: {
+        printf("s\n");
+        yOffset -= 200;
+      } break;
+      case SDLK_d: {
+        printf("d\n");
+        xOffset += 200;
+      } break;
+      case SDLK_a: {
+        printf("a\n");
+        xOffset -= 200;
+      } break;
+      }
+    }
+  } break;
   }
   return shouldQuit;
 }
