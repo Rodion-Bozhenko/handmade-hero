@@ -8,11 +8,16 @@ struct BackBuffer {
   int width;
   int height;
   int pitch;
+  int bytesPerPixel;
+};
+
+struct WindowDimension {
+  int width;
+  int height;
 };
 
 static BackBuffer globalBackBuffer;
 
-const int bytesPerPixel = 4;
 int xOffset = 128;
 int yOffset = 0;
 
@@ -22,6 +27,8 @@ static void updateWindow(SDL_Window *window, SDL_Renderer *renderer,
 static void renderWeirdGradient(BackBuffer buffer, int xOffset, int yOffset);
 static void resizeTexture(BackBuffer *buffer, SDL_Renderer *renderer, int width,
                           int height);
+
+WindowDimension getWindowDimension(SDL_Window *window);
 
 int main(int argc, char *argv[]) {
   if (SDL_Init(SDL_INIT_VIDEO)) {
@@ -41,9 +48,8 @@ int main(int argc, char *argv[]) {
     return 1;
   }
 
-  int width, height;
-  SDL_GetWindowSize(window, &width, &height);
-  resizeTexture(&globalBackBuffer, renderer, width, height);
+  WindowDimension dimension = getWindowDimension(window);
+  resizeTexture(&globalBackBuffer, renderer, dimension.width, dimension.height);
 
   bool running = true;
   while (running) {
@@ -62,6 +68,14 @@ int main(int argc, char *argv[]) {
 
   SDL_Quit();
   return 0;
+}
+
+WindowDimension getWindowDimension(SDL_Window *window) {
+  WindowDimension dimension;
+
+  SDL_GetWindowSize(window, &dimension.width, &dimension.height);
+
+  return dimension;
 }
 
 bool handleEvent(SDL_Event *event) {
@@ -111,8 +125,10 @@ static void resizeTexture(BackBuffer *buffer, SDL_Renderer *renderer, int width,
                         SDL_TEXTUREACCESS_STREAMING, width, height);
   buffer->width = width;
   buffer->height = height;
-  buffer->pitch = width * bytesPerPixel;
-  buffer->memory = malloc(buffer->width * buffer->height * bytesPerPixel);
+  buffer->bytesPerPixel = 4;
+  buffer->pitch = width * buffer->bytesPerPixel;
+  buffer->memory =
+      malloc(buffer->width * buffer->height * buffer->bytesPerPixel);
 }
 
 static void updateWindow(SDL_Window *window, SDL_Renderer *renderer,
