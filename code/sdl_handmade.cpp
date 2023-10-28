@@ -263,9 +263,9 @@ static void closeGameControllers() {
   }
 }
 
-static int initAudioDevice(int32_t samplesPerSecond, int32_t bufferSize) {
+static int initAudioDevice(int32_t sampleRate, int32_t bufferSize) {
   SDL_AudioSpec desiredAudioSettings = {0};
-  desiredAudioSettings.freq = samplesPerSecond;
+  desiredAudioSettings.freq = sampleRate;
   desiredAudioSettings.format = AUDIO_S16LSB;
   desiredAudioSettings.channels = 2;
   desiredAudioSettings.samples = bufferSize;
@@ -295,15 +295,15 @@ static int initAudioDevice(int32_t samplesPerSecond, int32_t bufferSize) {
 }
 
 static void audioCallback(void *userData, Uint8 *stream, int length) {
-  static double phase = 0; // Keeps track of position in the wave
+  static float phase = 0; // Keeps track of position in the wave
   int16_t *buffer = (int16_t *)stream;
   int oneChanLen = length / 2;
 
-  double const frequency = 261.63; // Middle C
-  double const sampleRate = SAMPLE_RATE;
+  float const frequency = 261.63; // Middle C
+  float const sampleRate = SAMPLE_RATE;
 
   for (int i = 0; i < oneChanLen; i += 2) {
-    double sampleValue = (int16_t)(300 * sin(2.0 * M_PI * frequency * phase));
+    float sampleValue = (int16_t)(300 * sin(phase));
 
     buffer[i] = sampleValue;     // Left channel
     buffer[i + 1] = sampleValue; // Right channel
