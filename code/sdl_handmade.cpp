@@ -4,6 +4,7 @@
 #include <stdio.h>
 
 #define MAX_CONTROLLERS 4
+#define SAMPLE_RATE 48000
 SDL_GameController *controllers[MAX_CONTROLLERS];
 
 struct BackBuffer {
@@ -20,15 +21,7 @@ struct WindowDimension {
   int height;
 };
 
-struct AudioRingBuffer {
-  int size;
-  int writeCursor;
-  int playCursor;
-  void *data;
-};
-
 static BackBuffer globalBackBuffer;
-AudioRingBuffer audioRingBuffer;
 
 int xOffset = 0;
 int yOffset = 0;
@@ -53,17 +46,7 @@ int main(int argc, char *argv[]) {
   }
   openGameControllers();
 
-  int samplesPerSecond = 48000;
-  int toneHz = 256; // Almost middle C
-  int16_t toneVolume = 1000;
-  uint32_t runningSampleIndex = 0;
-  int squareWavePeriod = samplesPerSecond / toneHz;
-  int bytesPerSample = sizeof(int16_t) * 2;
-  int sampleCount = 800;
-  int secondaryBufferSize = samplesPerSecond * bytesPerSample;
-
-  int audioDeviceID = initAudioDevice(48000, secondaryBufferSize);
-  bool soundPlaying = false;
+  int audioDeviceID = initAudioDevice(SAMPLE_RATE, 4096);
 
   SDL_Window *window =
       SDL_CreateWindow("Handmade Hero", SDL_WINDOWPOS_UNDEFINED,
@@ -130,53 +113,6 @@ int main(int argc, char *argv[]) {
           yOffset += 2;
         }
       }
-    }
-
-    // Sound output test
-    SDL_LockAudioDevice(audioDeviceID);
-    int byteToLock = runningSampleIndex * bytesPerSample % secondaryBufferSize;
-    int bytesToWrite;
-    if (byteToLock == audioRingBuffer.playCursor) {
-      bytesToWrite = secondaryBufferSize;
-    } else if (byteToLock > audioRingBuffer.playCursor) {
-      bytesToWrite = (secondaryBufferSize - byteToLock);
-      bytesToWrite += audioRingBuffer.playCursor;
-    } else {
-      bytesToWrite = audioRingBuffer.playCursor - byteToLock;
-    }
-
-    // TODO(casey): More strenuous test!
-    // TODO(casey): Switch to a sine wave
-    void *region1 = (uint8_t *)audioRingBuffer.data + byteToLock;
-    int region1Size = bytesToWrite;
-    if (region1Size + byteToLock > secondaryBufferSize)
-      region1Size = secondaryBufferSize - byteToLock;
-    void *region2 = audioRingBuffer.data;
-    int region2Size = bytesToWrite - region1Size;
-    SDL_UnlockAudioDevice(audioDeviceID);
-    int region1SampleCount = region1Size / bytesPerSample;
-    int16_t *sampleOut = (int16_t *)region1;
-    for (int sampleIndex = 0; sampleIndex < region1SampleCount; ++sampleIndex) {
-      int16_t sampleValue = ((runningSampleIndex++ / squareWavePeriod / 2) % 2)
-                                ? toneVolume
-                                : -toneVolume;
-      *sampleOut++ = sampleValue;
-      *sampleOut++ = sampleValue;
-    }
-
-    int region2SampleCount = region2Size / bytesPerSample;
-    sampleOut = (int16_t *)region2;
-    for (int sampleIndex = 0; sampleIndex < region2SampleCount; ++sampleIndex) {
-      int16_t sampleValue = ((runningSampleIndex++ / squareWavePeriod / 2) % 2)
-                                ? toneVolume
-                                : -toneVolume;
-      *sampleOut++ = sampleValue;
-      *sampleOut++ = sampleValue;
-    }
-
-    if (!soundPlaying) {
-      SDL_PauseAudioDevice(audioDeviceID, 0);
-      soundPlaying = true;
     }
   }
 
@@ -332,13 +268,8 @@ static int initAudioDevice(int32_t samplesPerSecond, int32_t bufferSize) {
   desiredAudioSettings.freq = samplesPerSecond;
   desiredAudioSettings.format = AUDIO_S16LSB;
   desiredAudioSettings.channels = 2;
-  desiredAudioSettings.samples = 1024;
+  desiredAudioSettings.samples = bufferSize;
   desiredAudioSettings.callback = &audioCallback;
-  desiredAudioSettings.userdata = &audioRingBuffer;
-
-  audioRingBuffer.size = bufferSize;
-  audioRingBuffer.data = malloc(bufferSize);
-  audioRingBuffer.playCursor = audioRingBuffer.writeCursor = 0;
 
   SDL_AudioSpec audioSettings;
   int deviceID =
@@ -358,21 +289,28 @@ static int initAudioDevice(int32_t samplesPerSecond, int32_t bufferSize) {
     SDL_CloseAudioDevice(deviceID);
   }
 
+  SDL_PauseAudioDevice(deviceID, 0);
+
   return deviceID;
 }
 
-static void audioCallback(void *userData, Uint8 *audioData, int legth) {
-  AudioRingBuffer *ringBuffer = (AudioRingBuffer *)userData;
+static void audioCallback(void *userData, Uint8 *stream, int length) {
+  static double phase = 0; // Keeps track of position in the wave
+  int16_t *buffer = (int16_t *)stream;
+  int oneChanLen = length / 2;
 
-  int region1Size = legth;
-  int region2Size = 0;
-  if (ringBuffer->playCursor + legth > ringBuffer->size) {
-    region1Size = ringBuffer->size - ringBuffer->playCursor;
-    region2Size = legth - region1Size;
+  double const frequency = 261.63; // Middle C
+  double const sampleRate = SAMPLE_RATE;
+
+  for (int i = 0; i < oneChanLen; i += 2) {
+    double sampleValue = (int16_t)(300 * sin(2.0 * M_PI * frequency * phase));
+
+    buffer[i] = sampleValue;     // Left channel
+    buffer[i + 1] = sampleValue; // Right channel
+
+    phase += (2.0 * M_PI * frequency) / sampleRate;
+    if (phase >= (2.0 * M_PI)) {
+      phase -= (2.0 * M_PI);
+    }
   }
-  memcpy(audioData, (uint8_t *)(ringBuffer->data) + ringBuffer->playCursor,
-         region1Size);
-  memcpy(&audioData[region1Size], ringBuffer->data, region2Size);
-  ringBuffer->playCursor = (ringBuffer->playCursor + legth) % ringBuffer->size;
-  ringBuffer->writeCursor = (ringBuffer->playCursor + 2048) % ringBuffer->size;
 }
