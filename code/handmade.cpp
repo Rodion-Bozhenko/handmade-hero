@@ -1,8 +1,8 @@
 #include "handmade.h"
 #include "stdlib.h"
 
-void renderWeirdGradient(GameOffscreenBuffer *buffer, int blueOffset,
-                         int greenOffset) {
+static void renderWeirdGradient(GameOffscreenBuffer *buffer, int blueOffset,
+                                int greenOffset) {
   uint8_t *row = (uint8_t *)buffer->memory;
 
   for (int y = 0; y < buffer->height; y++) {
