@@ -12,6 +12,9 @@ $(OUTPUT): $(SOURCES)
 
 run: $(OUTPUT)
 	./$(OUTPUT)
+	
+debug: $(OUTPUT)
+	lldb ./$(OUTPUT)
 
 clean:
 	rm -rf build
