@@ -1,4 +1,4 @@
-#include "SDL_audio.h"
+#include "handmade.h"
 #include <SDL.h>
 #include <stdint.h>
 #include <stdio.h>
@@ -7,7 +7,7 @@
 #define SAMPLE_RATE 48000
 SDL_GameController *controllers[MAX_CONTROLLERS];
 
-struct BackBuffer {
+struct SDLOffscreenBuffer {
   SDL_Texture *texture;
   void *memory;
   int width;
@@ -21,17 +21,16 @@ struct WindowDimension {
   int height;
 };
 
-static BackBuffer globalBackBuffer;
+static SDLOffscreenBuffer globalBackBuffer;
 
 int xOffset = 0;
 int yOffset = 0;
 
 bool handleEvent(SDL_Event *event);
 static void updateWindow(SDL_Window *window, SDL_Renderer *renderer,
-                         BackBuffer buffer);
-static void renderWeirdGradient(BackBuffer buffer, int xOffset, int yOffset);
-static void resizeTexture(BackBuffer *buffer, SDL_Renderer *renderer, int width,
-                          int height);
+                         SDLOffscreenBuffer buffer);
+static void resizeTexture(SDLOffscreenBuffer *buffer, SDL_Renderer *renderer,
+                          int width, int height);
 static void openGameControllers();
 static void closeGameControllers();
 static int initAudioDevice(int32_t samplesPerSecond, int32_t bufferSize);
@@ -72,7 +71,15 @@ int main(int argc, char *argv[]) {
         running = false;
       }
     }
-    renderWeirdGradient(globalBackBuffer, xOffset, yOffset);
+
+    GameOffscreenBuffer buffer = {};
+    buffer.memory = globalBackBuffer.memory;
+    buffer.width = globalBackBuffer.width;
+    buffer.height = globalBackBuffer.height;
+    buffer.pitch = globalBackBuffer.pitch;
+    buffer.bytesPerPixel = globalBackBuffer.bytesPerPixel;
+
+    gameUpdateAndRender(&buffer, xOffset, yOffset);
     updateWindow(window, renderer, globalBackBuffer);
 
     ++xOffset;
@@ -149,7 +156,15 @@ bool handleEvent(SDL_Event *event) {
       SDL_Renderer *renderer = SDL_GetRenderer(window);
       resizeTexture(&globalBackBuffer, renderer, event->window.data1,
                     event->window.data2);
-      renderWeirdGradient(globalBackBuffer, xOffset, yOffset);
+
+      GameOffscreenBuffer buffer = {};
+      buffer.memory = globalBackBuffer.memory;
+      buffer.width = globalBackBuffer.width;
+      buffer.height = globalBackBuffer.height;
+      buffer.pitch = globalBackBuffer.pitch;
+      buffer.bytesPerPixel = globalBackBuffer.bytesPerPixel;
+
+      gameUpdateAndRender(&buffer, xOffset, yOffset);
       updateWindow(window, renderer, globalBackBuffer);
     } break;
     case SDL_WINDOWEVENT_EXPOSED: {
@@ -195,8 +210,8 @@ bool handleEvent(SDL_Event *event) {
   return shouldQuit;
 }
 
-static void resizeTexture(BackBuffer *buffer, SDL_Renderer *renderer, int width,
-                          int height) {
+static void resizeTexture(SDLOffscreenBuffer *buffer, SDL_Renderer *renderer,
+                          int width, int height) {
   if (buffer->memory) {
     free(buffer->memory);
   }
@@ -217,29 +232,13 @@ static void resizeTexture(BackBuffer *buffer, SDL_Renderer *renderer, int width,
 }
 
 static void updateWindow(SDL_Window *window, SDL_Renderer *renderer,
-                         BackBuffer buffer) {
+                         SDLOffscreenBuffer buffer) {
   if (SDL_UpdateTexture(buffer.texture, 0, buffer.memory, buffer.pitch)) {
     // TODO: Handle error here
   }
 
   SDL_RenderCopy(renderer, buffer.texture, 0, 0);
   SDL_RenderPresent(renderer);
-}
-
-static void renderWeirdGradient(BackBuffer buffer, int xOffset, int yOffset) {
-  // Pitch - number of bytes that represent on row of pixels in bitmap or
-  // texture
-  uint8_t *row = (uint8_t *)buffer.memory;
-
-  for (int y = 0; y < buffer.height; y++) {
-    uint32_t *pixel = (uint32_t *)row;
-    for (int x = 0; x < buffer.width; x++) {
-      uint8_t blue = x + xOffset;
-      uint8_t green = y + yOffset;
-      *pixel++ = (green << 8 | blue);
-    }
-    row += buffer.pitch;
-  }
 }
 
 static void openGameControllers() {
